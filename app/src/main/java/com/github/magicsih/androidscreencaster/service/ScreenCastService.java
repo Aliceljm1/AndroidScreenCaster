@@ -1,14 +1,17 @@
 package com.github.magicsih.androidscreencaster.service;
 
+import android.Manifest;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -22,6 +25,8 @@ import com.github.magicsih.androidscreencaster.datagram.DatagramSocketClient;
 import com.github.magicsih.androidscreencaster.tcpstream.TcpSocketClient;
 import com.github.magicsih.androidscreencaster.writer.IvfWriter;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -51,6 +56,7 @@ public final class ScreenCastService extends Service {
 
     private InetAddress remoteHost;
     private int remotePort;
+    private FileOutputStream fos;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -80,10 +86,53 @@ public final class ScreenCastService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.d(TAG, "onCreate");
+        Log.d(TAG, "ScreenCastService onCreate");
 
         mediaProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+
+
+        prepareFileOutputStream();
+
     }
+
+    private void prepareFileOutputStream() {
+        Log.i(TAG, "prepareFileOutputStream");
+        File directory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File file = new File(directory, "out1.h264");
+        try {
+            fos = new FileOutputStream(file);
+            // 打印文件路径
+            Log.d("File Path", "文件路径: " + file.getAbsolutePath());
+        } catch (IOException e) {
+            e.printStackTrace();
+            // 处理异常
+            Log.e(TAG, "Failed to open file output stream."+e.toString());
+        }
+    }
+
+    public void writeFile(byte[] data) {
+        try {
+            if (fos != null) {
+                fos.write(data);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            // 处理异常
+        }
+    }
+
+    public void closeFile() {
+        Log.d(TAG, "closeFile");
+        try {
+            if (fos != null) {
+                fos.close();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            // 处理异常
+        }
+    }
+
 
     @Override
     public void onDestroy() {
@@ -184,6 +233,8 @@ public final class ScreenCastService extends Service {
                                 outputBuffer.limit(info.offset + info.size);
                                 byte[] b = new byte[outputBuffer.remaining()];
                                 outputBuffer.get(b);
+                                Log.i(TAG, "H264 Frame. size:" + b.length + " pts:" + info.presentationTimeUs);
+                                writeFile(b);
                                 sendData(null, b);
                             }
                             if (encoder != null) {
@@ -230,7 +281,7 @@ public final class ScreenCastService extends Service {
                                 byte[] header = IvfWriter.makeIvfFrameHeader(outputBuffer.remaining(), info.presentationTimeUs);
                                 byte[] b = new byte[outputBuffer.remaining()];
                                 outputBuffer.get(b);
-
+                                Log.i(TAG, "VP8 Frame. size:" + b.length + " pts:" + info.presentationTimeUs);
                                 sendData(header, b);
                             }
                             if (encoder != null) {
@@ -306,6 +357,7 @@ public final class ScreenCastService extends Service {
     }
 
     private void stopScreenCapture() {
+        closeFile();
         releaseEncoders();
         closeSocket();
         if (virtualDisplay == null) {
