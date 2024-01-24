@@ -199,6 +199,14 @@ public final class ScreenCastService extends Service {
         return START_STICKY;
     }
 
+    private static final int DEFAULT_I_FRAME_INTERVAL = 10; // seconds
+    private static final int REPEAT_FRAME_DELAY_US = 100_000; // repeat after 100ms
+
+    /**
+     * 宽高取屏幕的宽高，比特率取8Mbps，帧率取30fps，I帧间隔取10s
+     * {i-frame-interval=10, mime=video/avc, width=1080, channel-count=0,
+     * bitrate=8000000, frame-rate=30, height=2408, repeat-previous-frame-after=100000}
+     * **/
     private void startScreenCapture(int resultCode, Intent resultData, String format, int width, int height, int dpi, int bitrate) {
         this.mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, resultData);
 
@@ -206,12 +214,15 @@ public final class ScreenCastService extends Service {
 
         this.videoBufferInfo = new MediaCodec.BufferInfo();
         MediaFormat mediaFormat = MediaFormat.createVideoFormat(format, width, height);
-
+//
         mediaFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
         mediaFormat.setInteger(MediaFormat.KEY_FRAME_RATE, FPS);
         mediaFormat.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 0);
-        mediaFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
 
+        mediaFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, DEFAULT_I_FRAME_INTERVAL);
+        // display the very first frame, and recover from bad quality when no new frames
+        mediaFormat.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, REPEAT_FRAME_DELAY_US); // µs
+        Log.i(TAG, "MediaFormat: " + mediaFormat.toString());
         try {
 
             switch (format) {
@@ -236,53 +247,6 @@ public final class ScreenCastService extends Service {
                                 Log.i(TAG, "H264 Frame. size:" + b.length + " pts:" + info.presentationTimeUs);
                                 writeFile(b);
                                 sendData(null, b);
-                            }
-                            if (encoder != null) {
-                                encoder.releaseOutputBuffer(outputBufferId, false);
-                            }
-                            if ((videoBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                                Log.i(TAG, "End of Stream");
-                                stopScreenCapture();
-                            }
-                        }
-
-                        @Override
-                        public void onError(MediaCodec codec, MediaCodec.CodecException e) {
-                            e.printStackTrace();
-                        }
-
-                        @Override
-                        public void onOutputFormatChanged(MediaCodec codec, MediaFormat format) {
-                            Log.i(TAG, "onOutputFormatChanged. CodecInfo:" + codec.getCodecInfo().toString() + " MediaFormat:" + format.toString());
-                        }
-                    });
-                    break;
-                case MediaFormat.MIMETYPE_VIDEO_VP8:
-                    mediaFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
-                    final int frameSize = width * height * 3 / 2;
-                    //VP8
-                    byte[] ivfHeader = IvfWriter.makeIvfHeader(0, width, height, 1, bitrate);
-                    sendData(null, ivfHeader);
-
-                    this.encoder = MediaCodec.createByCodecName("OMX.google.vp8.encoder");
-//                this.encoder = MediaCodec.createEncoderByType(format);
-                    this.encoder.setCallback(new MediaCodec.Callback() {
-                        @Override
-                        public void onInputBufferAvailable(MediaCodec codec, int inputBufIndex) {
-                        }
-
-                        @Override
-                        public void onOutputBufferAvailable(MediaCodec codec, int outputBufferId, MediaCodec.BufferInfo info) {
-                            ByteBuffer outputBuffer = codec.getOutputBuffer(outputBufferId);
-                            if (info.size > 0 && outputBuffer != null) {
-                                outputBuffer.position(info.offset);
-                                outputBuffer.limit(info.offset + info.size);
-
-                                byte[] header = IvfWriter.makeIvfFrameHeader(outputBuffer.remaining(), info.presentationTimeUs);
-                                byte[] b = new byte[outputBuffer.remaining()];
-                                outputBuffer.get(b);
-                                Log.i(TAG, "VP8 Frame. size:" + b.length + " pts:" + info.presentationTimeUs);
-                                sendData(header, b);
                             }
                             if (encoder != null) {
                                 encoder.releaseOutputBuffer(outputBufferId, false);

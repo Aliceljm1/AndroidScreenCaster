@@ -65,5 +65,8 @@ This [project](https://www.linkedin.com/pulse/introduction-regression-test-autom
 - https://trac.ffmpeg.org/wiki/Encode/VP8
 - https://trac.ffmpeg.org/wiki/Encode/H.264
 
-# License (MIT)
-This project is licensed under the terms of the MIT license.
+# scrcpy项目的编码配置项：
+[server] DEBUG: MediaFormat: {color-format=2130708361, i-frame-interval=10, mime=video/avc, 
+bitrate=8000000, frame-rate=60, repeat-previous-frame-after=100000}  
+
+[server] DEBUG: Audio MediaFormat: {sample-rate=48000, mime=audio/opus, channel-count=2, bitrate=128000}  
